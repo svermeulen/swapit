@@ -170,18 +170,20 @@ endif
 "Command/AutoCommand Configuration {{{1
 "
 " For executing the listing
-nnoremap <silent><c-a> :<c-u>call SwapWord(expand("<cword>"),'forward', 'no')<cr>
-nnoremap <silent><c-x> :<c-u>call SwapWord(expand("<cword>"),'backward','no')<cr>
-vnoremap <silent><c-a> "dy:call SwapWord(@d,'forward','yes')<cr>
-vnoremap <silent><c-x> "dy:call SwapWord(@d,'backward','yes')<cr>
-"inoremap <silent><c-b> <esc>b"sdwi <c-r>=SwapInsert()<cr>
-"inoremap <expr> <c-b> SwapInsert()
+"
+" Increase/decrease/toggle value under cursor
+" Can be thought of as "Up" and "Down"
+
+nnoremap <silent> <plug>SwapItIncrement :<c-u>call SwapWord('forward', v:count)<cr>
+nnoremap <silent> <plug>SwapItDecrement :<c-u>call SwapWord('backward', v:count)<cr>
+
+nmap <silent> <c-u> <plug>SwapItIncrement
+nmap <silent> <c-x> <plug>SwapItDecrement
 
 " For adding lists
 com! -nargs=* SwapList call AddSwapList(<q-args>)
 com! ClearSwapList let g:swap_lists = []
 com! SwapIdea call OpenSwapFileType()
-com! -range -nargs=1 SwapWordVisual call SwapWord(getline('.'),<f-args>,'yes')
 "au BufEnter call LoadFileTypeSwapList()
 com! SwapListLoadFT call LoadFileTypeSwapList()
 com! -nargs=+ SwapXmlMatchit call AddSwapXmlMatchit(<q-args>)
@@ -189,16 +191,7 @@ com! -nargs=+ SwapXmlMatchit call AddSwapXmlMatchit(<q-args>)
 "
 "
 "SwapWord() main processiong event function {{{2
-fun! SwapWord (word, direction, is_visual)
-
-    let comfunc_result = 0
-    "{{{3 css omnicomplete property swapping
-    if exists('b:swap_completefunc')
-        exec "let complete_func = " . b:swap_completefunc . "('". a:direction ."')"
-        if ( comfunc_result == 1 )
-            return 1
-        endif
-    endif
+fun! SwapWord (direction, count)
 
     if g:swap_list_dont_append == 'yes'
         let test_lists =  g:swap_lists
@@ -206,58 +199,62 @@ fun! SwapWord (word, direction, is_visual)
         let test_lists =  g:swap_lists + g:default_swap_list
     endif
 
-    let cur_word = a:word
-    let match_list = []
+    exec 'normal! mz'
+    let startLine = line(".")
+    let oldDefaultRegister=@"
+    let foundMatch = 0
 
-    " Main for loop over each swaplist {{{3
-    for swap_list  in test_lists
-        let word_options = swap_list['options']
-        let word_index = index(word_options, cur_word)
+    while 1
+        " For some annoying reason, expand("<cword>") does not work in some cases like the following (with cursor on equal sign)
+        " test = true,
+        exec 'normal! "xyiw'
+        let cur_word = @x
 
-        if word_index != -1
-            call add(match_list, swap_list)
+        for swap_list  in test_lists
+            let word_options = swap_list['options']
+            let word_index = index(word_options, cur_word)
+
+            if word_index != -1
+                call SwapMatch(swap_list, cur_word, a:direction)
+                let foundMatch = 1
+                break
+            endif
+        endfor
+
+        if foundMatch
+            break
         endif
-    endfor
 
-    "}}}
+        let lastCol = col(".")
+        exec 'normal! w'
 
-    let out =  ProcessMatches(match_list, cur_word , a:direction, a:is_visual)
-    return ''
-endfun
+        if col(".") ==# lastCol || line(".") !=# startLine
+            break
+        end
+    endwhile
 
-"ProcessMatches() handles various result {{{2
-fun! ProcessMatches(match_list, cur_word, direction, is_visual)
+    if !foundMatch
+        let @"=oldDefaultRegister
+        exec 'normal! `z'
 
-    if len(a:match_list) == 0
-        let visual_prefix = (a:is_visual == 'yes' ? 'gv' : '')
         if a:direction == 'forward'
-            exec 'normal' visual_prefix . (v:count ? v:count : '') . "\<Plug>SwapItFallbackIncrement"
+            exec 'normal' (a:count ? a:count : '') . "\<Plug>SwapItFallbackIncrement"
         else
-            exec 'normal' visual_prefix . (v:count ? v:count : '') . "\<Plug>SwapItFallbackDecrement"
+            exec 'normal' (a:count ? a:count : '') . "\<Plug>SwapItFallbackDecrement"
         endif
-        return ''
     endif
 
-    if len(a:match_list) == 1
-        let swap_list = a:match_list[0]
-        call SwapMatch(swap_list, a:cur_word, a:direction, a:is_visual)
-        return ''
-    endif
+    exec 'normal! `z'
 
-    if len(a:match_list) > 7
-        echo "Too many matches for " . a:cur_word . ". "
-        echo a:match_list
-        return ''
+    if a:direction == 'forward'
+        call repeat#set("\<plug>SwapItIncrement", a:count)
+    else
+        call repeat#set("\<plug>SwapItDecrement", a:count)
     endif
-
-    if len(a:match_list) > 1
-        call ShowSwapChoices(a:match_list, a:cur_word, a:direction, a:is_visual)
-    endif
-
 endfun
 
 " SwapMatch()  handles match {{{2
-fun! SwapMatch(swap_list, cur_word, direction, is_visual)
+fun! SwapMatch(swap_list, cur_word, direction)
 
     let word_options = a:swap_list['options']
     let word_index = index(word_options, a:cur_word)
@@ -293,20 +290,11 @@ fun! SwapMatch(swap_list, cur_word, direction, is_visual)
     " Regular swaps {{{3
     else
 
-        if a:is_visual == 'yes'
-            if next_word =~ '\W'
-                let in_visual = 1
-                exec 'norm! gv"sp`[v`]' . (&selection ==# 'exclusive' ? 'l' : '')
-            else
-                exec 'norm! gv"spb'
-            endif
+        if next_word =~ '\W'
+            let in_visual = 1
+            exec 'norm! maviw"sp`[v`]' . (&selection ==# 'exclusive' ? 'l' : '')
         else
-            if next_word =~ '\W'
-                let in_visual = 1
-                exec 'norm! maviw"sp`[v`]' . (&selection ==# 'exclusive' ? 'l' : '')
-            else
-                exec 'norm! maviw"spb`a'
-            endif
+            exec 'norm! maviw"spb`a'
         endif
     endif
     " 3}}}
@@ -328,54 +316,7 @@ fun! SwapMatch(swap_list, cur_word, direction, is_visual)
     "\. ' ' . word_index . ' ' . a:direction . ' ' . len(word_options)
     return 1
 endfun
-"
-"ShowSwapChoices() shows alternative swaps {{{2
-fun! ShowSwapChoices(match_list, cur_word, direction, is_visual)
 
-    let a_opts = ['A','B','C','D','E','F','G']
-    let con_index = 0
-    let confirm_options = ''
-    let confirm_but = ''
-
-    "Generate the prompt {{{3
-    for swap_list in a:match_list
-        let next_index = (index(swap_list['options'], a:cur_word) + (a:direction == 'forward' ? 1 : -1)) % len(swap_list['options'])
-        let confirm_options =  confirm_options . ' ' . a_opts[con_index] . " . " . swap_list['name'] . ' (' .
-                    \a:cur_word . ' > ' . swap_list['options'][next_index] . ') '
-
-        "        For some reason concatenating stuffs up the string, using an
-        "        if con_index > 0
-        "            let confirm_but = confirm_but + '\n'
-        "        endif
-        "        let confirm_but = confirm_but +  "option&". a_opts[con_index]
-
-        let con_index = con_index + 1
-    endfor
-    "   }}}
-    "    TODO Prompt  This is a bit inelegant but I'm using it as the second argument of
-    "       confirm wont take a concatenated string (some escape issue). At the moment I just want it
-    "       to work
-    "       {{{3
-    if len(a:match_list) == 2
-        let choice = confirm("Swap Options: " . confirm_options , "&A\n&B" ,  0)
-    elseif len(a:match_list) == 3
-        let choice = confirm("Swap Options: ". confirm_options  , "&A\n&B\n&C" ,  0)
-    elseif len(a:match_list) == 4
-        let choice = confirm("Swap Options: ". confirm_options  , "&A\n&B\n&C\n&D" , 0)
-    elseif len(a:match_list) == 5
-        let choice = confirm("Swap Options: ". confirm_options  , "&A\n&B\n&C\n&D\n&E" ,  0)
-    elseif len(a:match_list) == 6
-        let choice = confirm("Swap Options: ". confirm_options  , "&A\n&B\n&C\n&D\n&E\n&F" , 0)
-    elseif len(a:match_list) == 7
-        let choice = confirm("Swap Options: ". confirm_options  , "&A\n&B\n&C\n&D\n&E\&F\&G" , 0)
-    endif
-    "   }}}
-    if choice != 0
-        call SwapMatch(a:match_list[choice -1], a:cur_word, a:direction, a:is_visual)
-    else
-        echo "Swap: Cancelled"
-    endif
-endfun
 "Insert Mode List Handling {{{1
 "
 "SwapInsert() call a swap list from insert mode
@@ -450,17 +391,13 @@ else
                 \{'name':'Yes/No', 'options': ['Yes','No']},
                 \{'name':'True/False', 'options': ['True','False']},
                 \{'name':'true/false', 'options': ['true','false']},
-                \{'name':'AND/OR', 'options': ['AND','OR']},
                 \{'name':'Hello World', 'options': ['Hello World!','GoodBye Cruel World!' , 'See You Next Tuesday!']},
                 \{'name':'On/Off', 'options': ['On','Off']},
                 \{'name':'on/off', 'options': ['on','off']},
                 \{'name':'ON/OFF', 'options': ['ON','OFF']},
-                \{'name':'comparison_operator', 'options': ['<','<=','==', '>=', '>' , '=~', '!=']},
-                \{'name': 'datatype', 'options': ['bool', 'char','int','unsigned int', 'float','long', 'double']},
                 \{'name':'weekday', 'options': ['Sunday','Monday', 'Tuesday', 'Wednesday','Thursday', 'Friday', 'Saturday']},
                 \]
 endif
-"NOTE: comparison_operator doesn't work yet but there in the hope of future
 "
 "capability
 
