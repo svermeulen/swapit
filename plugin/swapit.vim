@@ -178,7 +178,7 @@ nnoremap <silent> <plug>SwapItIncrement :<c-u>call SwapWord('forward', v:count)<
 nnoremap <silent> <plug>SwapItDecrement :<c-u>call SwapWord('backward', v:count)<cr>
 
 nmap <silent> <c-u> <plug>SwapItIncrement
-nmap <silent> <c-x> <plug>SwapItDecrement
+nmap <silent> <c-y> <plug>SwapItDecrement
 
 " For adding lists
 com! -nargs=* SwapList call AddSwapList(<q-args>)
