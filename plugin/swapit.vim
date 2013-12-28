@@ -177,9 +177,6 @@ endif
 nnoremap <silent> <plug>SwapItIncrement :<c-u>call SwapWord('forward', v:count)<cr>
 nnoremap <silent> <plug>SwapItDecrement :<c-u>call SwapWord('backward', v:count)<cr>
 
-nmap <silent> M <plug>SwapItIncrement
-nmap <silent> D <plug>SwapItDecrement
-
 " For adding lists
 com! -nargs=* SwapList call AddSwapList(<q-args>)
 com! ClearSwapList let g:swap_lists = []
