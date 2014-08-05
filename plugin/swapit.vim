@@ -271,24 +271,24 @@ fun! SwapMatch(swap_list, cur_word, direction)
     "XML matchit handling  {{{3
     if index(g:swap_xml_matchit, a:swap_list['name']) != -1
 
-        if match(getline("."),"<\\(\\/".a:cur_word."\\|".a:cur_word."\\)[^>]*>" ) == -1
-            return 0
-        endif
+        "if match(getline("."),"<\\(\\/".a:cur_word."\\|".a:cur_word."\\)[^>]*>" ) == -1
+            "return 0
+        "endif
 
-        exec "norm T<ma%"
+        "exec "norm T<ma%"
 
-        "If the cursor is on a / then jump to the front and mark
+        ""If the cursor is on a / then jump to the front and mark
 
-        if getline(".")[col(".") -1] != "/"
-            exec "norm ma%"
-        endif
+        "if getline(".")[col(".") -1] != "/"
+            "exec "norm ma%"
+        "endif
 
-        exec "norm lviw\"sp`aviw\"sp"
+        "exec "norm lviw\"sp`aviw\"sp"
     " Regular swaps {{{3
     else
 
         if next_word =~ '\W'
-            let in_visual = 1
+            "let in_visual = 1
             exec 'norm! maviw"sp`[v`]' . (&selection ==# 'exclusive' ? 'l' : '')
         else
             exec 'norm! maviw"spb`a'
